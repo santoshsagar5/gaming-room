@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modular Room — Assembly 3D</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#f6f6f6; overflow:hidden; height:100vh; font-family:'Rajdhani',sans-serif; color:#f3f3f5; }
+
+  .hud {
+    position:absolute; top:0; left:0; right:0;
+    padding:14px 18px; display:flex; justify-content:space-between; align-items:flex-start;
+    z-index:10; pointer-events:none;
+  }
+  .title h1 { font-family:'Orbitron',monospace; font-size:1rem; font-weight:900; color:#007a44; text-shadow:0 0 12px #00cc6644; letter-spacing:3px; }
+  .title p { font-size:0.68rem; color:#f0e8e866; letter-spacing:2px; margin-top:2px; }
+
+  .step-indicator {
+    position:absolute; top:60px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    z-index:10; pointer-events:none;
+  }
+  .step-label {
+    font-family:'Orbitron',monospace; font-size:0.75rem; color:#00ff88;
+    letter-spacing:2px; text-align:center;
+    background:rgba(0,255,136,0.08); border:1px solid rgba(0,255,136,0.25);
+    padding:6px 18px; border-radius:20px;
+  }
+  .step-dots { display:flex; gap:8px; }
+  .dot {
+    width:8px; height:8px; border-radius:50%;
+    background:rgba(0,255,136,0.2); border:1px solid rgba(0,255,136,0.4);
+    transition:all 0.4s;
+  }
+  .dot.active { background:#00ff88; box-shadow:0 0 8px #00ff88; }
+
+  .controls {
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+    display:flex; gap:12px; z-index:10;
+  }
+  .btn {
+    font-family:'Orbitron',monospace; font-size:0.7rem; letter-spacing:1px;
+    padding:10px 20px; border-radius:8px; cursor:pointer; border:none;
+    transition:all 0.2s;
+  }
+  .btn-prev { background:rgba(255,255,255,0.07); color:#ffffff88; border:1px solid rgba(255,255,255,0.15); }
+  .btn-prev:hover { background:rgba(255,255,255,0.12); color:#fff; }
+  .btn-play { background:rgba(0,255,136,0.15); color:#00ff88; border:1px solid rgba(0,255,136,0.4); }
+  .btn-play:hover { background:rgba(0,255,136,0.25); }
+  .btn-next { background:rgba(0,255,136,0.1); color:#00ff88; border:1px solid rgba(0,255,136,0.3); }
+  .btn-next:hover { background:rgba(0,255,136,0.2); }
+
+  .part-list {
+    position:absolute; top:60px; right:18px;
+    display:flex; flex-direction:column; gap:5px;
+    z-index:10; pointer-events:none;
+  }
+  .part-item {
+    display:flex; align-items:center; gap:8px;
+    padding:5px 12px; border-radius:6px;
+    font-size:0.68rem; letter-spacing:1px;
+    background:rgba(251, 251, 251, 0.4); border:1px solid rgba(255,255,255,0.06);
+    transition:all 0.5s;
+    opacity:0.3;
+  }
+  .part-item.done { opacity:1; border-color:rgba(0,255,136,0.3); background:rgba(0,255,136,0.06); color:#00ff88; }
+  .part-item.active { opacity:1; border-color:#00ff88; background:rgba(0,255,136,0.15); color:#fff; box-shadow:0 0 12px rgba(0,255,136,0.2); }
+  .part-dot { width:8px; height:8px; border-radius:50%; background:currentColor; }
+
+  .corner { position:absolute; width:32px; height:32px; pointer-events:none; z-index:10; }
+  .corner.tl { top:6px; left:6px; border-top:2px solid #00ff8844; border-left:2px solid #00ff8844; }
+  .corner.tr { top:6px; right:6px; border-top:2px solid #00ff8844; border-right:2px solid #00ff8844; }
+  .corner.bl { bottom:6px; left:6px; border-bottom:2px solid #00ff8844; border-left:2px solid #00ff8844; }
+  .corner.br { bottom:6px; right:6px; border-bottom:2px solid #00ff8844; border-right:2px solid #00ff8844; }
+
+  .drag-hint {
+    position:absolute; bottom:70px; left:50%; transform:translateX(-50%);
+    font-size:0.62rem; color:#ffffff33; letter-spacing:2px; z-index:10; pointer-events:none;
+  }
+</style>
+</head>
+<body>
+<div class="corner tl"></div><div class="corner tr"></div>
+<div class="corner bl"></div><div class="corner br"></div>
+
+<div class="hud">
+  <div class="title">
+    <h1>⚙️ Modular Room — Assembly</h1>
+    <p>Bolt-On • No Welding • Fully Removable</p>
+  </div>
+</div>
+
+<div class="step-indicator">
+  <div class="step-label" id="stepLabel">Step 1 — Floor Base</div>
+  <div class="step-dots" id="stepDots"></div>
+</div>
+
+<div class="part-list" id="partList"></div>
+
+<div class="drag-hint">DRAG to rotate • SCROLL to zoom</div>
+
+<div class="controls">
+  <button class="btn btn-prev" onclick="prevStep()">◀ PREV</button>
+  <button class="btn btn-play" id="playBtn" onclick="toggleAuto()">▶ AUTO</button>
+  <button class="btn btn-next" onclick="nextStep()">NEXT ▶</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060610);
+
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+renderer.domElement.style.position = 'absolute';
+renderer.domElement.style.top = '0'; renderer.domElement.style.left = '0';
+
+const camera = new THREE.PerspectiveCamera(48, W/H, 0.1, 200);
+
+// Room dims
+const L=10.5, B=6.5, Ht=7.5, hL=L/2, hB=B/2;
+
+// ── MATERIALS ──
+const pipeMat  = new THREE.MeshStandardMaterial({color:0x00aadd, roughness:0.25, metalness:0.95});
+const connMat  = new THREE.MeshStandardMaterial({color:0xffcc00, roughness:0.2, metalness:0.9, emissive:0x221100, emissiveIntensity:0.5});
+const plyMat   = new THREE.MeshStandardMaterial({color:0x7a4f2e, roughness:0.85, transparent:true, opacity:0.82});
+const floorMat = new THREE.MeshStandardMaterial({color:0x1a1a2e, roughness:0.9});
+const gridMat  = new THREE.MeshStandardMaterial({color:0x00ff88, roughness:0.5, transparent:true, opacity:0.15, wireframe:true});
+
+// ── PART GROUPS (each step = one group) ──
+const groups = [];
+
+function makeGroup() {
+  const g = new THREE.Group();
+  g.visible = false;
+  scene.add(g);
+  groups.push(g);
+  return g;
+}
+
+function addBox(grp, w,h,d, x,y,z, mat, ry=0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  m.position.set(x,y,z); m.rotation.y=ry;
+  m.castShadow=true; m.receiveShadow=true;
+  grp.add(m); return m;
+}
+
+function addConn(grp, x,y,z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.2,0.2), connMat);
+  m.position.set(x,y,z); grp.add(m);
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.26,8), new THREE.MeshStandardMaterial({color:0xcccccc,metalness:1,roughness:0.1}));
+  b.position.set(x,y,z); grp.add(b);
+}
+
+const P=0.07, PP=0.055;
+
+// ══ STEP 0: Floor Base Frame ══
+const g0 = makeGroup();
+addBox(g0, L,0.1,B, 0,-0.05,0, floorMat);
+// Bottom perimeter frame
+addBox(g0, L,PP,PP, 0,0,hB, pipeMat);
+addBox(g0, L,PP,PP, 0,0,-hB, pipeMat);
+addBox(g0, PP,PP,B, hL,0,0, pipeMat);
+addBox(g0, PP,PP,B, -hL,0,0, pipeMat);
+// Connectors at bottom corners
+[[-hL,hB],[hL,hB],[-hL,-hB],[hL,-hB]].forEach(([x,z])=>addConn(g0,x,0,z));
+// Grid overlay
+addBox(g0, L,0.02,B, 0,0.01,0, gridMat);
+
+// ══ STEP 1: Corner Vertical Posts ══
+const g1 = makeGroup();
+const corners4 = [[-hL,hB],[hL,hB],[-hL,-hB],[hL,-hB]];
+corners4.forEach(([x,z])=>{
+  addBox(g1, P,Ht,P, x,Ht/2,z, pipeMat);
+  addConn(g1, x,Ht,z);
+  addConn(g1, x,Ht/2,z);
+});
+
+// ══ STEP 2: Top Perimeter Beams ══
+const g2 = makeGroup();
+addBox(g2, L,PP,PP, 0,Ht,hB, pipeMat);
+addBox(g2, L,PP,PP, 0,Ht,-hB, pipeMat);
+addBox(g2, PP,PP,B, hL,Ht,0, pipeMat);
+addBox(g2, PP,PP,B, -hL,Ht,0, pipeMat);
+
+// ══ STEP 3: Mid Horizontal Beams ══
+const g3 = makeGroup();
+const midH=Ht/2;
+addBox(g3, L,PP,PP, 0,midH,hB, pipeMat);
+addBox(g3, L,PP,PP, 0,midH,-hB, pipeMat);
+addBox(g3, PP,PP,B, hL,midH,0, pipeMat);
+addBox(g3, PP,PP,B, -hL,midH,0, pipeMat);
+[[-hL,hB],[hL,hB],[-hL,-hB],[hL,-hB]].forEach(([x,z])=>addConn(g3,x,midH,z));
+
+// ══ STEP 4: Intermediate Vertical Posts ══
+const g4 = makeGroup();
+[[-L/4,hB],[L/4,hB],[-L/4,-hB],[L/4,-hB],[hL,0],[-hL,0]].forEach(([x,z])=>{
+  addBox(g4, PP,Ht,PP, x,Ht/2,z, pipeMat);
+  addConn(g4, x,0,z);
+  addConn(g4, x,midH,z);
+  addConn(g4, x,Ht,z);
+});
+
+// ══ STEP 5: Ceiling Cross Beams ══
+const g5 = makeGroup();
+[-B/4,B/4].forEach(z=>addBox(g5,L,PP,PP,0,Ht,z,pipeMat));
+[-L/3,0,L/3].forEach(x=>addBox(g5,PP,PP,B,x,Ht,0,pipeMat));
+
+// ══ STEP 6: Door + Window Frame ══
+const g6 = makeGroup();
+const doorX=2.5, doorW=1.0, doorH=6.5;
+addBox(g6,PP,doorH,PP, doorX-doorW/2,doorH/2,hB, pipeMat);
+addBox(g6,PP,doorH,PP, doorX+doorW/2,doorH/2,hB, pipeMat);
+addBox(g6,doorW,PP,PP, doorX,doorH,hB, pipeMat);
+addConn(g6, doorX-doorW/2,0,hB);
+addConn(g6, doorX+doorW/2,0,hB);
+addConn(g6, doorX-doorW/2,doorH,hB);
+addConn(g6, doorX+doorW/2,doorH,hB);
+
+const winX=-2.5, winW=1.8, winH=1.5, winY=4.5;
+addBox(g6,PP,winH,PP, winX-winW/2,winY+winH/2,-hB, pipeMat);
+addBox(g6,PP,winH,PP, winX+winW/2,winY+winH/2,-hB, pipeMat);
+addBox(g6,winW,PP,PP, winX,winY,-hB, pipeMat);
+addBox(g6,winW,PP,PP, winX,winY+winH,-hB, pipeMat);
+// Window cross
+addBox(g6,winW*0.5,PP*0.6,PP*0.6, winX,winY+winH/2,-hB, pipeMat);
+
+// ══ STEP 7: Plywood Walls ══
+const g7 = makeGroup();
+const plyT=0.06;
+// Back wall
+addBox(g7,L-0.1,winY-0.1,plyT, 0,winY/2,-hB+plyT/2, plyMat);
+addBox(g7,L-0.1,Ht-winY-winH-0.1,plyT, 0,winY+winH+(Ht-winY-winH)/2,-hB+plyT/2, plyMat);
+const lw = hL+winX-winW/2-0.1;
+addBox(g7,lw,winH,plyT, -hL+lw/2,winY+winH/2,-hB+plyT/2, plyMat);
+const rw = hL-winX-winW/2-0.1;
+addBox(g7,rw,winH,plyT, winX+winW/2+rw/2,winY+winH/2,-hB+plyT/2, plyMat);
+// Front wall
+const dl=doorX-doorW/2+hL;
+addBox(g7,dl-0.1,Ht-0.1,plyT, -hL+dl/2,Ht/2,hB-plyT/2, plyMat);
+const dr=hL-(doorX+doorW/2);
+addBox(g7,dr-0.1,Ht-0.1,plyT, doorX+doorW/2+dr/2,Ht/2,hB-plyT/2, plyMat);
+addBox(g7,doorW,Ht-doorH-0.1,plyT, doorX,doorH+(Ht-doorH)/2,hB-plyT/2, plyMat);
+// Side walls
+addBox(g7,plyT,Ht-0.1,B-0.1, -hL+plyT/2,Ht/2,0, plyMat);
+addBox(g7,plyT,Ht-0.1,B-0.1, hL-plyT/2,Ht/2,0, plyMat);
+
+// ══ STEP 8: Ceiling + Door ══
+const g8 = makeGroup();
+addBox(g8,L-0.1,plyT,B-0.1, 0,Ht+plyT/2,0, new THREE.MeshStandardMaterial({color:0x161625,roughness:0.9,transparent:true,opacity:0.85}));
+// Door panel
+addBox(g8,doorW-0.06,doorH-0.1,plyT, doorX,doorH/2,hB-plyT/2, new THREE.MeshStandardMaterial({color:0x4a3020,roughness:0.8}));
+// Hinges
+[-1,1].forEach(s=>addBox(g8,0.06,0.12,0.06, doorX-doorW/2+0.03,doorH/2+s*2,hB-0.03, connMat));
+
+// ══ STEP DEFINITIONS ══
+const steps = [
+  { label:"Step 1 — Floor Base Frame",    part:"🏗️ Floor Base",         group:0 },
+  { label:"Step 2 — Corner Vertical Posts", part:"🔵 Corner Posts (4)",   group:1 },
+  { label:"Step 3 — Top Perimeter Beams",  part:"🔵 Top Beams",           group:2 },
+  { label:"Step 4 — Mid Horizontal Beams", part:"🔵 Mid Beams",           group:3 },
+  { label:"Step 5 — Intermediate Posts",   part:"🔵 Inter. Posts",        group:4 },
+  { label:"Step 6 — Ceiling Cross Beams",  part:"🔵 Ceiling Beams",       group:5 },
+  { label:"Step 7 — Door + Window Frame",  part:"🟡 Door & Window",       group:6 },
+  { label:"Step 8 — Plywood Walls",        part:"🪵 Plywood Walls",       group:7 },
+  { label:"Step 9 — Ceiling + Door ✅",    part:"🪵 Ceiling + Door",      group:8 },
+];
+
+// Build dots + part list UI
+const dotsEl = document.getElementById('stepDots');
+const listEl = document.getElementById('partList');
+steps.forEach((s,i)=>{
+  const d=document.createElement('div'); d.className='dot'; d.id='dot'+i; dotsEl.appendChild(d);
+  const p=document.createElement('div'); p.className='part-item'; p.id='part'+i;
+  p.innerHTML=`<div class="part-dot"></div>${s.part}`;
+  listEl.appendChild(p);
+});
+
+let currentStep = -1;
+let autoPlay = false;
+let autoTimer = null;
+
+function showStep(idx) {
+  // Show all groups up to idx
+  groups.forEach((g,i)=>{ g.visible = i <= steps[idx].group; });
+
+  document.getElementById('stepLabel').textContent = steps[idx].label;
+
+  // Update dots
+  steps.forEach((_,i)=>{
+    document.getElementById('dot'+i).className = 'dot' + (i<=idx?' active':'');
+    const p=document.getElementById('part'+i);
+    if(i<idx) p.className='part-item done';
+    else if(i===idx) p.className='part-item active';
+    else p.className='part-item';
+  });
+
+  currentStep = idx;
+}
+
+function nextStep() {
+  const next = (currentStep+1) % steps.length;
+  // Animate parts flying in from above
+  const grp = groups[steps[next].group];
+  if(next > currentStep || next===0) {
+    grp.position.y = 4;
+    showStep(next);
+    animateIn(grp);
+  } else {
+    showStep(next);
+  }
+}
+
+function prevStep() {
+  stopAuto();
+  const prev = (currentStep-1+steps.length)%steps.length;
+  showStep(prev);
+}
+
+function animateIn(grp) {
+  let t=0;
+  const startY=grp.position.y;
+  function tick(){
+    t+=0.05;
+    grp.position.y=startY*(1-easeOut(t));
+    if(t<1) requestAnimationFrame(tick);
+    else grp.position.y=0;
+  }
+  tick();
+}
+
+function easeOut(t){ return 1-Math.pow(1-t,3); }
+
+function toggleAuto() {
+  autoPlay=!autoPlay;
+  document.getElementById('playBtn').textContent = autoPlay?'⏸ PAUSE':'▶ AUTO';
+  if(autoPlay){
+    autoTimer=setInterval(()=>{ nextStep(); },2200);
+  } else {
+    stopAuto();
+  }
+}
+function stopAuto(){
+  autoPlay=false;
+  document.getElementById('playBtn').textContent='▶ AUTO';
+  if(autoTimer){clearInterval(autoTimer);autoTimer=null;}
+}
+
+// Start at step 0
+showStep(0);
+
+// ── GRID ──
+const grid=new THREE.GridHelper(30,30,0x00ff8810,0x00ff8806);
+grid.position.y=-0.06; scene.add(grid);
+
+// ── LIGHTS ──
+scene.add(new THREE.AmbientLight(0x334455,0.9));
+const sun=new THREE.DirectionalLight(0xfff4e0,1.6);
+sun.position.set(10,18,10); sun.castShadow=true; scene.add(sun);
+const fill=new THREE.PointLight(0x0055ff,0.5,30); fill.position.set(-8,8,-6); scene.add(fill);
+const rim=new THREE.PointLight(0x00ff88,0.7,25); rim.position.set(0,Ht+2,0); scene.add(rim);
+
+// ── ORBIT ──
+let sph={theta:-0.55,phi:0.75,r:17};
+let tgt=new THREE.Vector3(0,Ht/2-0.5,0);
+function updateCam(){
+  camera.position.x=tgt.x+sph.r*Math.sin(sph.phi)*Math.sin(sph.theta);
+  camera.position.y=tgt.y+sph.r*Math.cos(sph.phi);
+  camera.position.z=tgt.z+sph.r*Math.sin(sph.phi)*Math.cos(sph.theta);
+  camera.lookAt(tgt);
+}
+updateCam();
+
+let drag=false,rDrag=false,prev={x:0,y:0};
+renderer.domElement.addEventListener('mousedown',e=>{drag=true;rDrag=e.button===2;prev={x:e.clientX,y:e.clientY};});
+renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('mouseup',()=>drag=false);
+window.addEventListener('mousemove',e=>{
+  if(!drag)return;
+  const dx=(e.clientX-prev.x)*0.005,dy=(e.clientY-prev.y)*0.005;
+  prev={x:e.clientX,y:e.clientY};
+  if(rDrag){tgt.x-=dx*2;tgt.y+=dy*2;}
+  else{sph.theta-=dx;sph.phi=Math.max(0.1,Math.min(Math.PI*0.47,sph.phi+dy));}
+  updateCam();
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  sph.r=Math.max(5,Math.min(30,sph.r+e.deltaY*0.02));updateCam();
+},{passive:true});
+let lt=null;
+renderer.domElement.addEventListener('touchstart',e=>{lt={x:e.touches[0].clientX,y:e.touches[0].clientY};});
+renderer.domElement.addEventListener('touchmove',e=>{
+  if(!lt)return;
+  const dx=(e.touches[0].clientX-lt.x)*0.005,dy=(e.touches[0].clientY-lt.y)*0.005;
+  lt={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  sph.theta-=dx;sph.phi=Math.max(0.1,Math.min(Math.PI*0.47,sph.phi+dy));updateCam();
+});
+
+let t=0;
+function animate(){
+  requestAnimationFrame(animate); t+=0.008;
+  rim.intensity=0.5+0.25*Math.sin(t*1.2);
+  renderer.render(scene,camera);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+  const w=window.innerWidth,h=window.innerHeight;
+  camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);
+});
+</script>
+</body>
+</html>
